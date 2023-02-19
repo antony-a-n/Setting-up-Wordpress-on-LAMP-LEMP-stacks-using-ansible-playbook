@@ -1,0 +1,171 @@
+---
+    - name: "installing apache"
+      yum:
+        name: httpd
+        state: present
+      tags:
+        - lamp
+
+    - name: "installing php"
+      shell: amazon-linux-extras install php7.4 -y
+      tags:
+        - lamp
+
+    - name: "copying httpd.config"
+      template:
+        src: ./httpd.conf.tmpl
+        dest: /etc/httpd/conf/httpd.conf
+      tags:
+        - lamp
+        - wordpress
+
+    - name: "creating virtual host"
+      template:
+        src: "./virutal.conf.tmpl"
+        dest: "/etc/httpd/conf.d/{{domain}}.conf"
+        owner: "{{owner}}"
+        group: "{{group}}"
+      tags:
+        - lamp
+        - wordpress
+    - name: "creating document root"
+      file:
+        path: "/var/www/html/{{domain}}"
+        state: directory
+        owner: "{{owner}}"
+        group: "{{group}}"
+      tags:
+        - lamp
+
+    - name: "creating sample files"
+      copy:
+        src: "{{item}}"
+        dest: "/var/www/html/{{domain}}/"
+        owner: "{{owner}}"
+        group: "{{group}}"
+      with_items:
+        - sample.php
+        - sample.html
+      tags:
+        - lamp
+        - wordpress
+
+    - name: "installing mariadb package"
+      yum:
+        name:
+          - mariadb-server
+          - MySQL-python
+        state: present
+      tags:
+        - lamp
+        - wordpress
+        - mariadb
+    - name: "restarting service"
+      service:
+        name: mariadb
+        state: restarted
+        enabled: true
+      tags:
+        - mariadb
+        - wordpress
+        - lamp
+    - name: "updating root password"
+      ignore_errors: true
+      mysql_user:
+        login_user: "root"
+        login_password: ""
+        name: "root"
+        password: "{{mysql_root_password}}"
+        host_all : true
+      tags:
+        - lamp
+        - wordpress
+        - mariadb
+
+    - name: "removing anonymous users"
+      mysql_user:
+        login_user: "root"
+        login_password: "{{mysql_root_password}}"
+        name: ""
+        password: ""
+        host_all: true
+        state: absent
+      tags:
+       - wordpress
+       - lamp
+       - mariadb
+
+    - name: "creating database"
+      mysql_db:
+        login_user: "root"
+        login_password: "{{mysql_root_password}}"
+        name: "{{mysql_db}}"
+        state: present
+      tags:
+        - lamp
+        - wordpress
+        - mariadb
+    - name: "creating user"
+      mysql_user:
+        login_user: "root"
+        login_password: "{{mysql_root_password}}"
+        name: "{{mysql_user}}"
+        password: "{{mysql_password}}"
+        state: present
+        host: "%"
+        priv: "{{mysql_db}}.*:ALL"
+      tags:
+       - wordpress
+       - mariadb
+       - lamp
+
+    - name: "downloading wordpress files"
+      get_url:
+        url: "{{wp_url}}"
+        dest: "/tmp/wordpress.tar.gz"
+      tags:
+        - wordpress
+        - lamp
+        - mariadb
+    - name: "extracting files"
+      unarchive:
+        src: "/tmp/wordpress.tar.gz"
+        dest: "/tmp/"
+        remote_src: true
+      tags:
+        - lamp
+        - mariadb
+        - wordpress
+    - name: "copying website files"
+      copy:
+        src: "/tmp/wordpress/"
+        dest: "/var/www/html/{{domain}}"
+        owner: "{{owner}}"
+        group: "{{group}}"
+        remote_src: yes
+    - name: "setting up wp-config"
+      template:
+        src: ./wp-config.php.tmpl
+        dest: "/var/www/html/{{domain}}/wp-config.php"
+        owner: "{{owner}}"
+        group: "{{group}}"
+    - name: "restarting services"
+      service:
+        name: "{{item}}"
+        state: restarted
+        enabled: true
+      with_items:
+        - httpd
+        - mariadb
+      tags:
+        - httpd
+        - mariadb
+    - name: "cleanup"
+      file:
+        name: "{{item}}"
+        state: absent
+      with_items:
+        - "/tmp/wordpress/"
+        - "/tmp/wordpress.tar.gz"
+      tags:
+        - wordpress
