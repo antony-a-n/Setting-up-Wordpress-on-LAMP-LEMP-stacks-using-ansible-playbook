@@ -1,0 +1,163 @@
+---
+    - name: "installing nginx"
+      apt:
+        update_cache: true
+        name: nginx
+        state: present
+      tags:
+        - lamp
+
+    - name: "installing php"
+      apt:
+        name:
+          - php-mysql
+          - php-fpm
+        update_cache: true
+        state: present
+      tags:
+        - lamp
+
+    - name: "creating virtual host"
+      template:
+        src: "./nginx-virtualhost.tmpl"
+        dest: "/etc/nginx/sites-available/{{domain}}"
+      tags:
+        - lamp
+        - wordpress
+    - name: "creating document root"
+      file:
+        path: "/var/www/{{domain}}"
+        state: directory
+        owner: "{{owner}}"
+        group: "{{group}}"
+      tags:
+        - lamp
+
+    - name: "creating sample files"
+      copy:
+        src: "{{item}}"
+        dest: "/var/www/{{domain}}/"
+        owner: "{{owner}}"
+        group: "{{group}}"
+      with_items:
+        - sample.php
+        - sample.html
+      tags:
+        - lamp
+        - wordpress
+
+    - name: "link"
+      file:
+        src: "/etc/nginx/sites-available/{{domain}}"
+        dest: "/etc/nginx/sites-enabled/{{domain}}"
+        state: link
+
+    - name: "installing mysql package"
+      apt:
+        update_cache: true
+        name:
+          - mariadb-server
+          - python3-pymysql
+        state: present
+
+    - name: "updating root password"
+      ignore_errors: true
+      mysql_user:
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_user: "root"
+        login_password: ""
+        name: "root"
+        password: "{{mysql_root_password}}"
+        host_all : true
+      tags:
+        - lamp
+        - wordpress
+        - mariadb
+
+    - name: "removing anonymous users"
+      mysql_user:
+        login_user: "root"
+        login_password: "{{mysql_root_password}}"
+        name: ""
+        password: ""
+        host_all: true
+        state: absent
+      tags:
+       - wordpress
+       - lamp
+       - mysql
+
+    - name: "creating database"
+      mysql_db:
+        login_user: "root"
+        login_password: "{{mysql_root_password}}"
+        name: "{{mysql_db}}"
+        state: present
+      tags:
+        - lamp
+        - wordpress
+        - mysql
+    - name: "creating user"
+      mysql_user:
+        login_user: "root"
+        login_password: "{{mysql_root_password}}"
+        name: "{{mysql_user}}"
+        password: "{{mysql_password}}"
+        state: present
+        host: "%"
+        priv: "{{mysql_db}}.*:ALL"
+      tags:
+       - wordpress
+       - mysql
+       - lamp
+
+    - name: "downloading wordpress files"
+      get_url:
+        url: "{{wp_url}}"
+        dest: "/tmp/wordpress.tar.gz"
+      tags:
+        - wordpress
+        - lamp
+        - mariadb
+    - name: "extracting files"
+      unarchive:
+        src: "/tmp/wordpress.tar.gz"
+        dest: "/tmp/"
+        remote_src: true
+      tags:
+        - lamp
+        - mariadb
+        - wordpress
+    - name: "copying website files"
+      copy:
+        src: "/tmp/wordpress/"
+        dest: "/var/www/{{domain}}"
+        owner: "{{owner}}"
+        group: "{{group}}"
+        remote_src: yes
+    - name: "setting up wp-config"
+      template:
+        src: ./wp-config.php.tmpl
+        dest: "/var/www/{{domain}}/wp-config.php"
+        owner: "{{owner}}"
+        group: "{{group}}"
+    - name: "restarting services"
+      service:
+        name: "{{item}}"
+        state: restarted
+        enabled: true
+      with_items:
+        - nginx
+        - mariadb
+      tags:
+        - nginx
+        - mysql
+    - name: "cleanup"
+      file:
+        name: "{{item}}"
+        state: absent
+      with_items:
+        - "/tmp/wordpress/"
+        - "/tmp/wordpress.tar.gz"
+      tags:
+        - wordpress
