@@ -1,0 +1,14 @@
+---
+
+- name: "wordpress installation"
+  become: yes
+  gather_facts: true
+  hosts: amazon, ubuntu
+
+  tasks:
+
+    - include_tasks: "amazon.yml"
+      when: ansible_distribution == "Amazon" and ansible_pkg_mgr == "yum"
+
+    - include_tasks: "ubuntu.yml"
+      when: ansible_distribution == "Ubuntu" and ansible_pkg_mgr == "apt"
